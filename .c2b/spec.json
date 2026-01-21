@@ -1,0 +1,223 @@
+{
+  "project_name": "TeamTaskManager",
+  "theme": "Discord上で動作する、チーム向けの分散タスク管理ボット",
+  "description": "TeamTaskManagerは、Discordサーバー内でチームのタスクを効率的に管理するためのボットです。タスクの追加、一覧表示、完了、削除といった基本的な操作に加え、担当者の割り当てや期限設定も可能です。Discordのロールと連携した権限管理機能や、期限が近づいたタスクの自動通知機能を備えており、チームの生産性向上をサポートします。",
+  "goal": "チームメンバーがDiscordを離れることなく、シームレスにタスクを管理できる環境を提供すること。また、Cogを用いたモジュール式の設計や型ヒントの活用により、Pythonとdiscord.pyを学ぶ初心者にとって模範となるような、可読性と保守性の高いコードベースを実現する。",
+  "features": [
+    "タスク管理 (CRUD): スラッシュコマンドを通じて、タスクの作成、一覧表示、更新、削除が可能。",
+    "インタラクティブなUI: タスク一覧はEmbedで見やすく表示し、10件を超える場合はボタン操作によるページネーションに対応。",
+    "権限管理: タスクの操作は作成者、担当者、または指定された管理者ロールを持つユーザーに限定。管理者は全てのタスクを操作可能。",
+    "自動通知機能: 期限の24時間前になると担当者にDMでリマインダーを送信し、期限切れのタスクは指定されたチャンネルに警告を投稿するバックグラウンドタスクを実装。",
+    "データ永続化: タスクデータはSQLiteデータベースに保存され、ボットを再起動してもデータが失われない。",
+    "堅牢な設計: データベース接続エラーや不正なコマンド入力に対する例外処理を実装し、安定した運用を実現。詳細なログも出力。",
+    "モジュール設計: discord.pyのCogを用いて機能を分割し、main.pyが肥大化しないクリーンなプロジェクト構成を維持。"
+  ],
+  "commands": [
+    {
+      "name": "task_add",
+      "display_name": "/task add",
+      "description": "新しいタスクを作成します。",
+      "category": "Task",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "title",
+          "type": "string",
+          "description": "タスクのタイトル",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "description": "タスクの詳細な説明",
+          "required": false
+        },
+        {
+          "name": "due_date",
+          "type": "string",
+          "description": "タスクの期限 (例: 2023-12-31 23:59)",
+          "required": false
+        },
+        {
+          "name": "assignee",
+          "type": "user",
+          "description": "タスクの担当者",
+          "required": false
+        }
+      ],
+      "example": "/task add title: 新機能の実装 description: ユーザー認証機能を追加する due_date: 2024-01-15 18:00 assignee: @user"
+    },
+    {
+      "name": "task_list",
+      "display_name": "/task list",
+      "description": "タスクの一覧をEmbedで表示します。",
+      "category": "Task",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "status",
+          "type": "string",
+          "description": "表示するタスクのステータスで絞り込み (todo, doing, done)",
+          "required": false
+        },
+        {
+          "name": "assignee",
+          "type": "user",
+          "description": "担当者でタスクを絞り込み",
+          "required": false
+        }
+      ],
+      "example": "/task list status: todo assignee: @user"
+    },
+    {
+      "name": "task_done",
+      "display_name": "/task done",
+      "description": "指定したタスクを完了済みにします。",
+      "category": "Task",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "task_id",
+          "type": "integer",
+          "description": "完了にするタスクのID",
+          "required": true
+        }
+      ],
+      "example": "/task done task_id: 12"
+    },
+    {
+      "name": "task_delete",
+      "display_name": "/task delete",
+      "description": "指定したタスクを削除します。",
+      "category": "Task",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "task_id",
+          "type": "integer",
+          "description": "削除するタスクのID",
+          "required": true
+        }
+      ],
+      "example": "/task delete task_id: 12"
+    },
+    {
+      "name": "task_edit",
+      "display_name": "/task edit",
+      "description": "指定したタスクの内容を編集します。",
+      "category": "Task",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "task_id",
+          "type": "integer",
+          "description": "編集するタスクのID",
+          "required": true
+        }
+      ],
+      "example": "/task edit task_id: 12 (実行後、編集項目を選択するUIが表示されます)"
+    },
+    {
+      "name": "task_detail",
+      "display_name": "/task detail",
+      "description": "指定したタスクの詳細を表示します。",
+      "category": "Task",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "task_id",
+          "type": "integer",
+          "description": "詳細を表示するタスクのID",
+          "required": true
+        }
+      ],
+      "example": "/task detail task_id: 12"
+    },
+    {
+      "name": "config",
+      "display_name": "/config",
+      "description": "ボットのサーバー設定を行います（管理者のみ）。",
+      "category": "Admin",
+      "command_type": "slash",
+      "parameters": [
+        {
+          "name": "admin_role",
+          "type": "role",
+          "description": "管理者ロールを指定します。",
+          "required": false
+        },
+        {
+          "name": "notification_channel",
+          "type": "channel",
+          "description": "期限切れタスクの通知チャンネルを指定します。",
+          "required": false
+        }
+      ],
+      "example": "/config admin_role: @Admin notification_channel: #task-alerts"
+    }
+  ],
+  "persistence": "SQLite",
+  "persistence_details": "データ永続化にはSQLiteを使用します。セットアップが容易で、外部サーバーを必要としないため、小〜中規模のDiscordボットに適しています。非同期処理に対応した`aiosqlite`ライブラリを使用し、ボットのイベントループをブロックしないようにします。データベースファイルは`.env`で指定されたパスに生成されます。テーブルは`tasks`と`server_configs`の2つを作成します。`tasks`テーブルにはユーザー指定のスキーマに加え、サーバーを識別するための`guild_id`カラムを追加します。",
+  "external_apis": [],
+  "dependencies": [
+    {
+      "package": "discord.py",
+      "version": "~=2.3.2",
+      "purpose": "Discord Botを開発するための主要ライブラリ。"
+    },
+    {
+      "package": "python-dotenv",
+      "version": "~=1.0.0",
+      "purpose": ".envファイルから環境変数を読み込むために使用。"
+    },
+    {
+      "package": "aiosqlite",
+      "version": "~=0.19.0",
+      "purpose": "非同期プログラムでSQLiteデータベースを操作するために使用。"
+    }
+  ],
+  "env_vars": [
+    "DISCORD_BOT_TOKEN: Discord Developer Portalで取得するBotの認証トークン。",
+    "ADMIN_ROLE_ID: Botの管理者権限を持つDiscordロールのID。/configコマンドで設定可能。",
+    "NOTIFICATION_CHANNEL_ID: 期限切れタスクを通知するDiscordチャンネルのID。/configコマンドで設定可能。",
+    "DATABASE_FILE: SQLiteデータベースファイルのパス (例: tasks.db)。"
+  ],
+  "constraints": [
+    "discord.py 2.x系を使用すること。",
+    "機能はCogを用いてモジュール化すること。",
+    "トークンや設定値は.envファイルで管理し、ハードコードしないこと。"
+  ],
+  "non_goals": [
+    "複数人によるタスクのリアルタイム共同編集機能。",
+    "TrelloやJiraなどの外部プロジェクト管理ツールとの連携。",
+    "プロジェクトやサブタスクといった階層的なタスク管理。"
+  ],
+  "assumptions": [
+    "ボットは複数のDiscordサーバーで利用される可能性があるため、データはサーバー(guild)ごとに分離される必要がある。",
+    "サーバーの管理者が、ボットの初期設定（管理者ロールや通知チャンネルの指定）を行う。",
+    "日付や時刻の入力は、特定のフォーマット（例: YYYY-MM-DD HH:MM）で行われることを想定するが、柔軟なパースも試みる。"
+  ],
+  "implementation_notes": [
+    {
+      "topic": "データベース設計",
+      "note": "tasksテーブルに`guild_id`カラムを追加し、全てのクエリでguild_idを条件に含めることで、マルチサーバーに対応させます。DB操作は専用のマネージャークラスに集約し、Cogからはそのクラスを呼び出す形にすると保守性が向上します。",
+      "source": "一般的なマルチテナントアプリケーションの設計パターン"
+    },
+    {
+      "topic": "通知機能の実装",
+      "note": "`discord.ext.tasks.loop`デコレータを使用して、定期的に実行されるバックグラウンドタスクを実装します。例えば60秒ごとにデータベースをチェックし、通知が必要なタスクを検索します。DM送信に失敗する可能性（ユーザーがDMを拒否している場合など）を考慮し、例外処理を必ず記述します。",
+      "source": "discord.py公式ドキュメント (tasks extension)"
+    },
+    {
+      "topic": "インタラクティブUI (Pagination, Edit)",
+      "note": "タスク一覧のページネーションには`discord.ui.View`と`discord.ui.Button`を組み合わせたカスタムViewクラスを作成します。このViewが現在のページ番号を保持し、ボタンが押されるとEmbedを更新します。`/task edit`コマンドでは、実行後に`discord.ui.Select`で編集したい項目（タイトル、説明など）を選択させ、選択後に`discord.ui.Modal`を表示して新しい値を入力させる、という多段階の対話形式UIを実装するとUXが向上します。",
+      "source": "discord.py公式ドキュメント (discord.ui)"
+    },
+    {
+      "topic": "エラーハンドリング",
+      "note": "Cogごとに`cog_app_command_error`リスナーを定義するか、グローバルなエラーハンドラを作成して、コマンド実行時のエラーを一元管理します。特に、ユーザー入力（タスクIDなど）が無効な場合や、権限が不足している場合に、分かりやすいエラーメッセージをユーザーに返却することが重要です。",
+      "source": "discord.pyにおけるエラーハンドリングのベストプラクティス"
+    }
+  ],
+  "user_request": "チームで使える実用的なDiscordタスク管理ボットを作成する。要件は、タスクのCRUD、ロールベースの権限管理、期限の自動通知、SQLite/Supabaseによるデータ永続化、Embedやページネーションを用いた見やすいUX、そしてCogによる整理されたコード構成を含む。"
+}
